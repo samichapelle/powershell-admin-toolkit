@@ -1,0 +1,10 @@
+# Generated inventory files
+inventory.csv
+*-inventory.csv
+
+# Temporary files
+*.tmp
+*.log
+
+# PowerShell / editor artifacts
+.vscode/
