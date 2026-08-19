@@ -139,6 +139,52 @@ Cette séparation permet de conserver `Get-ServiceHealth` comme une fonction pro
 
 ---
 
+### Diagnostic de connectivité réseau
+
+La fonction `Test-NetworkConnectivity` permet d'effectuer plusieurs contrôles de connectivité vers une ou plusieurs machines :
+
+- résolution DNS ;
+- récupération des adresses IP associées ;
+- test de connectivité ICMP ;
+- test de ports TCP ;
+- interrogation de plusieurs machines et plusieurs ports.
+
+Exemple :
+
+```powershell
+Test-NetworkConnectivity -ComputerName google.com -Port 80,443
+```
+
+La fonction retourne des objets PowerShell structurés contenant notamment :
+
+```text
+ComputerName
+DnsResolved
+ResolvedIP
+PingSuccess
+Port
+TcpOpen
+```
+
+Plusieurs machines peuvent être testées simultanément :
+
+```powershell
+Test-NetworkConnectivity -ComputerName SRV01,SRV02 -Port 443,3389
+```
+
+Les résultats peuvent ensuite être exploités directement dans le pipeline. Par exemple, pour afficher uniquement les ports dont la connexion TCP a échoué :
+
+```powershell
+Test-NetworkConnectivity -ComputerName SRV01,SRV02 -Port 443,3389 |
+    Where-Object TcpOpen -eq $false
+```
+
+Cette approche permet d'utiliser la fonction aussi bien pour un diagnostic ponctuel que comme composant d'un processus d'automatisation plus large.
+
+![Test de connectivité réseau](./docs/screenshots/network-connectivity.png)
+
+---
+
 ## Utilisation
 
 Importer le module :
@@ -160,6 +206,7 @@ Export-SystemInventory
 Get-ServiceHealth
 Get-SystemInventory
 Show-ServiceHealth
+Test-NetworkConnectivity
 ```
 
 Pour obtenir davantage d'informations pendant l'exécution :
@@ -248,6 +295,9 @@ Le projet met progressivement en pratique plusieurs mécanismes importants de Po
 - modules PowerShell (`.psm1`) ;
 - manifestes de modules (`.psd1`) ;
 - export de données structurées vers CSV.
+- résolution DNS avec `Resolve-DnsName` ;
+- diagnostic réseau avec `Test-Connection` et `Test-NetConnection` ;
+- filtrage et exploitation des résultats via le pipeline.
 
 ---
 
@@ -273,6 +323,10 @@ Les fonctionnalités actuellement opérationnelles comprennent :
 - l'export des inventaires au format CSV ;
 - le contrôle de l'état des services Windows ;
 - la détection de services automatiques anormalement arrêtés ;
-- l'affichage interactif de l'état des services.
+- l'affichage interactif de l'état des services ;
+- la résolution DNS d'une ou plusieurs cibles ;
+- le test de connectivité ICMP ;
+- le diagnostic de connectivité TCP sur un ou plusieurs ports ;
+- le filtrage et l'exploitation des résultats via le pipeline PowerShell.
 
-D'autres fonctions d'administration Windows seront progressivement ajoutées au toolkit.
+D'autres fonctions d'administration et de diagnostic Windows seront progressivement ajoutées au toolkit.
