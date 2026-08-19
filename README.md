@@ -2,7 +2,7 @@
 
 Toolkit PowerShell conçu pour automatiser des tâches courantes d'**administration systèmes Windows**.
 
-Ce projet a pour objectif de développer des outils réutilisables pour l'administration d'un parc Windows tout en mettant en pratique les principaux concepts de PowerShell : modules, fonctions avancées, pipeline, objets structurés, CIM et gestion des erreurs.
+Ce projet a pour objectif de développer des outils réutilisables pour l'administration d'un parc Windows tout en mettant en pratique les principaux concepts de PowerShell : modules, fonctions avancées, pipeline, objets structurés, CIM, diagnostic réseau, analyse des journaux Windows et gestion des erreurs.
 
 Le toolkit est développé progressivement autour de cas d'usage concrets rencontrés en administration systèmes.
 
@@ -185,6 +185,93 @@ Cette approche permet d'utiliser la fonction aussi bien pour un diagnostic ponct
 
 ---
 
+### Analyse des journaux Windows
+
+La fonction `Get-EventLogSummary` permet d'obtenir une synthèse des événements Windows enregistrés sur une période donnée.
+
+Elle permet notamment de :
+
+- sélectionner le journal à analyser (`System`, `Application` ou `Security`) ;
+- définir une période d'analyse en heures ;
+- compter les événements selon leur niveau de sévérité ;
+- identifier automatiquement le niveau de risque global ;
+- déterminer un indicateur de santé de la machine ;
+- analyser une machine locale ou distante.
+
+Exemple :
+
+```powershell
+Get-EventLogSummary
+```
+
+Par défaut, la fonction analyse le journal `System` sur les dernières 24 heures.
+
+Il est possible de sélectionner un autre journal et une autre période :
+
+```powershell
+Get-EventLogSummary -LogName Application -LastHours 48
+```
+
+La fonction retourne un objet structuré contenant notamment :
+
+```text
+ComputerName
+LogName
+LastHours
+TotalEvents
+Critical
+Errors
+Warnings
+Information
+Verbose
+Other
+Healthy
+RiskLevel
+```
+
+Les niveaux d'événements sont identifiés à partir de leur valeur numérique Windows plutôt qu'à partir de `LevelDisplayName`.
+
+Cette approche évite de dépendre de la langue du système d'exploitation :
+
+```text
+1 = Critical
+2 = Error
+3 = Warning
+4 = Information
+5 = Verbose
+```
+
+Le niveau de risque est évalué selon les événements observés et des seuils configurables.
+
+Avec les valeurs par défaut :
+
+```text
+Critical > 0          -> Critical
+Errors >= 10          -> High
+Errors > 0            -> Medium
+Warnings >= 50        -> Medium
+Sinon                 -> Low
+```
+
+Les seuils peuvent être adaptés lors de l'appel de la fonction :
+
+```powershell
+Get-EventLogSummary -ErrorThreshold 5 -WarningThreshold 20
+```
+
+Comme les autres fonctions de collecte du toolkit, `Get-EventLogSummary` retourne des objets PowerShell pouvant être filtrés ou intégrés dans d'autres traitements.
+
+Par exemple :
+
+```powershell
+Get-EventLogSummary |
+    Where-Object Healthy -eq $false
+```
+
+![Event Log Summary](./docs/screenshots/event-log-summary.png)
+
+---
+
 ## Utilisation
 
 Importer le module :
@@ -203,6 +290,7 @@ Exemple de sortie :
 
 ```text
 Export-SystemInventory
+Get-EventLogSummary
 Get-ServiceHealth
 Get-SystemInventory
 Show-ServiceHealth
@@ -220,23 +308,23 @@ Get-SystemInventory |
 
 ## Administration distante
 
-`Get-SystemInventory` distingue automatiquement l'inventaire de la machine locale et celui d'une machine distante.
+Plusieurs fonctions du toolkit sont conçues pour fonctionner aussi bien sur la machine locale que sur des machines distantes.
 
-L'inventaire local utilise directement CIM :
-
-```powershell
-Get-SystemInventory
-```
-
-Pour une machine distante :
+Par exemple :
 
 ```powershell
 Get-SystemInventory -ComputerName SRV01
 ```
 
-L'interrogation distante nécessite que la machine cible soit accessible et correctement configurée pour l'administration distante, notamment via **WinRM**.
+ou :
 
-La fonction accepte également plusieurs noms de machines et les entrées provenant du pipeline.
+```powershell
+Get-EventLogSummary -ComputerName SRV01 -LogName System
+```
+
+L'interrogation distante nécessite que la machine cible soit accessible et correctement configurée pour l'administration distante.
+
+Selon la fonction utilisée, cela peut notamment nécessiter une configuration appropriée de **WinRM**, des droits suffisants et l'ouverture des flux réseau nécessaires.
 
 ---
 
@@ -249,7 +337,10 @@ powershell-admin-toolkit/
 ├── config/
 ├── docs/
 │   └── screenshots/
+│       ├── event-log-summary.png
+│       ├── network-connectivity.png
 │       └── service-health.png
+│
 ├── examples/
 │   └── usage-examples.ps1
 │
@@ -262,9 +353,11 @@ powershell-admin-toolkit/
 │   │
 │   └── Public/
 │       ├── Export-SystemInventory.ps1
+│       ├── Get-EventLogSummary.ps1
 │       ├── Get-ServiceHealth.ps1
 │       ├── Get-SystemInventory.ps1
-│       └── Show-ServiceHealth.ps1
+│       ├── Show-ServiceHealth.ps1
+│       └── Test-NetworkConnectivity.ps1
 │
 └── tests/
     └── PowerShellAdminToolkit.Tests.ps1
@@ -294,9 +387,12 @@ Le projet met progressivement en pratique plusieurs mécanismes importants de Po
 - séparation entre collecte de données et présentation ;
 - modules PowerShell (`.psm1`) ;
 - manifestes de modules (`.psd1`) ;
-- export de données structurées vers CSV.
+- export de données structurées vers CSV ;
 - résolution DNS avec `Resolve-DnsName` ;
 - diagnostic réseau avec `Test-Connection` et `Test-NetConnection` ;
+- analyse des journaux Windows avec `Get-WinEvent` ;
+- filtrage des événements avec `FilterHashtable` ;
+- agrégation et classification de données ;
 - filtrage et exploitation des résultats via le pipeline.
 
 ---
@@ -309,7 +405,7 @@ Le module est actuellement développé pour :
 - Windows Server ;
 - Windows PowerShell 5.1 et versions ultérieures.
 
-Certaines fonctionnalités d'administration distante nécessitent une configuration appropriée de WinRM sur les machines cibles.
+Certaines fonctionnalités d'administration distante nécessitent une configuration appropriée de WinRM et des droits suffisants sur les machines cibles.
 
 ---
 
@@ -327,6 +423,10 @@ Les fonctionnalités actuellement opérationnelles comprennent :
 - la résolution DNS d'une ou plusieurs cibles ;
 - le test de connectivité ICMP ;
 - le diagnostic de connectivité TCP sur un ou plusieurs ports ;
+- l'analyse des journaux Windows ;
+- le comptage des événements par niveau de sévérité ;
+- l'évaluation d'un niveau de risque à partir des événements observés ;
+- l'analyse locale ou distante de plusieurs composants Windows ;
 - le filtrage et l'exploitation des résultats via le pipeline PowerShell.
 
-D'autres fonctions d'administration et de diagnostic Windows seront progressivement ajoutées au toolkit.
+D'autres fonctions d'administration, de diagnostic et d'automatisation Windows seront progressivement ajoutées au toolkit.
