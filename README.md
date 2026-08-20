@@ -2,7 +2,7 @@
 
 Toolkit PowerShell conçu pour automatiser des tâches courantes d'**administration systèmes Windows**.
 
-Ce projet a pour objectif de développer des outils réutilisables pour l'administration d'un parc Windows tout en mettant en pratique les principaux concepts de PowerShell : modules, fonctions avancées, pipeline, objets structurés, CIM, diagnostic réseau, analyse des journaux Windows et gestion des erreurs.
+Ce projet a pour objectif de développer des outils réutilisables pour l'administration d'un parc Windows tout en mettant en pratique les principaux concepts de PowerShell : modules, fonctions avancées, pipeline, objets structurés, CIM et gestion des erreurs.
 
 Le toolkit est développé progressivement autour de cas d'usage concrets rencontrés en administration systèmes.
 
@@ -185,18 +185,20 @@ Cette approche permet d'utiliser la fonction aussi bien pour un diagnostic ponct
 
 ---
 
-### Analyse des journaux Windows
+### Analyse des journaux d'événements Windows
 
-La fonction `Get-EventLogSummary` permet d'obtenir une synthèse des événements Windows enregistrés sur une période donnée.
+La fonction `Get-EventLogSummary` fournit une synthèse des événements présents dans un journal Windows sur une période donnée.
 
-Elle permet notamment de :
+Elle permet notamment d'obtenir :
 
-- sélectionner le journal à analyser (`System`, `Application` ou `Security`) ;
-- définir une période d'analyse en heures ;
-- compter les événements selon leur niveau de sévérité ;
-- identifier automatiquement le niveau de risque global ;
-- déterminer un indicateur de santé de la machine ;
-- analyser une machine locale ou distante.
+- le nombre total d'événements ;
+- le nombre d'événements critiques ;
+- le nombre d'erreurs ;
+- le nombre d'avertissements ;
+- le nombre d'événements d'information ;
+- les événements de niveau verbose ou autres ;
+- un indicateur `Healthy` ;
+- un niveau de risque `RiskLevel`.
 
 Exemple :
 
@@ -204,15 +206,13 @@ Exemple :
 Get-EventLogSummary
 ```
 
-Par défaut, la fonction analyse le journal `System` sur les dernières 24 heures.
-
-Il est possible de sélectionner un autre journal et une autre période :
+Il est possible de sélectionner le journal et la période à analyser :
 
 ```powershell
-Get-EventLogSummary -LogName Application -LastHours 48
+Get-EventLogSummary -LogName Application -LastHours 24
 ```
 
-La fonction retourne un objet structuré contenant notamment :
+La fonction retourne un objet structuré de ce type :
 
 ```text
 ComputerName
@@ -229,46 +229,73 @@ Healthy
 RiskLevel
 ```
 
-Les niveaux d'événements sont identifiés à partir de leur valeur numérique Windows plutôt qu'à partir de `LevelDisplayName`.
-
-Cette approche évite de dépendre de la langue du système d'exploitation :
-
-```text
-1 = Critical
-2 = Error
-3 = Warning
-4 = Information
-5 = Verbose
-```
-
-Le niveau de risque est évalué selon les événements observés et des seuils configurables.
-
-Avec les valeurs par défaut :
-
-```text
-Critical > 0          -> Critical
-Errors >= 10          -> High
-Errors > 0            -> Medium
-Warnings >= 50        -> Medium
-Sinon                 -> Low
-```
-
-Les seuils peuvent être adaptés lors de l'appel de la fonction :
-
-```powershell
-Get-EventLogSummary -ErrorThreshold 5 -WarningThreshold 20
-```
-
-Comme les autres fonctions de collecte du toolkit, `Get-EventLogSummary` retourne des objets PowerShell pouvant être filtrés ou intégrés dans d'autres traitements.
-
-Par exemple :
-
-```powershell
-Get-EventLogSummary |
-    Where-Object Healthy -eq $false
-```
+L'évaluation de l'état permet d'obtenir rapidement une indication synthétique de la santé du journal analysé tout en conservant le détail du nombre d'événements par niveau.
 
 ![Event Log Summary](./docs/screenshots/event-log-summary.png)
+
+---
+
+### Analyse des comptes locaux
+
+La fonction `Get-LocalAccountStatus` permet d'inventorier les comptes utilisateurs locaux et d'effectuer plusieurs contrôles simples liés à leur état et à leur utilisation.
+
+Pour chaque compte, la fonction retourne notamment :
+
+- le nom de la machine ;
+- le nom du compte ;
+- son SID ;
+- son type ;
+- son état activé ou désactivé ;
+- la date de dernière connexion ;
+- le nombre de jours depuis la dernière connexion ;
+- les propriétés liées au mot de passe ;
+- un niveau de risque ;
+- la raison d'une éventuelle alerte.
+
+Exemple :
+
+```powershell
+Get-LocalAccountStatus
+```
+
+Les comptes intégrés `Administrator` et `Guest` sont identifiés à partir de leur **SID/RID** plutôt que de leur nom.
+
+Cette méthode permet de reconnaître ces comptes indépendamment de la langue de Windows ou d'un éventuel renommage :
+
+```text
+RID -500    BuiltInAdministrator
+RID -501    BuiltInGuest
+```
+
+La fonction signale notamment :
+
+- un compte Administrateur intégré activé ;
+- un compte Invité intégré activé ;
+- un compte actif n'ayant jamais ouvert de session ;
+- un compte actif inutilisé depuis un nombre configurable de jours.
+
+Le seuil d'inactivité est fixé à 90 jours par défaut et peut être modifié :
+
+```powershell
+Get-LocalAccountStatus -InactiveDays 60
+```
+
+Les résultats peuvent être filtrés directement dans le pipeline afin de ne conserver que les comptes nécessitant une attention :
+
+```powershell
+Get-LocalAccountStatus |
+    Where-Object Risk -ne 'OK'
+```
+
+Une vue synthétique peut également être obtenue :
+
+```powershell
+Get-LocalAccountStatus |
+    Select-Object UserName, AccountType, Enabled, DaysSinceLastLogon, Risk, RiskReason |
+    Format-Table
+```
+
+![Local Account Status](./docs/screenshots/local-account-status.png)
 
 ---
 
@@ -286,11 +313,12 @@ Afficher les commandes disponibles :
 Get-Command -Module PowerShellAdminToolkit
 ```
 
-Exemple de sortie :
+Les commandes actuellement disponibles sont :
 
 ```text
 Export-SystemInventory
 Get-EventLogSummary
+Get-LocalAccountStatus
 Get-ServiceHealth
 Get-SystemInventory
 Show-ServiceHealth
@@ -310,21 +338,21 @@ Get-SystemInventory |
 
 Plusieurs fonctions du toolkit sont conçues pour fonctionner aussi bien sur la machine locale que sur des machines distantes.
 
-Par exemple :
+`Get-SystemInventory` permet par exemple d'interroger une machine distante :
 
 ```powershell
 Get-SystemInventory -ComputerName SRV01
 ```
 
-ou :
+`Get-LocalAccountStatus` accepte également un ou plusieurs noms de machines :
 
 ```powershell
-Get-EventLogSummary -ComputerName SRV01 -LogName System
+Get-LocalAccountStatus -ComputerName SRV01,SRV02
 ```
 
-L'interrogation distante nécessite que la machine cible soit accessible et correctement configurée pour l'administration distante.
+L'administration distante nécessite que les machines cibles soient accessibles et correctement configurées, notamment via **WinRM / PowerShell Remoting**.
 
-Selon la fonction utilisée, cela peut notamment nécessiter une configuration appropriée de **WinRM**, des droits suffisants et l'ouverture des flux réseau nécessaires.
+Certaines fonctions acceptent également les entrées provenant du pipeline afin de faciliter leur intégration dans des traitements automatisés.
 
 ---
 
@@ -338,6 +366,7 @@ powershell-admin-toolkit/
 ├── docs/
 │   └── screenshots/
 │       ├── event-log-summary.png
+│       ├── local-account-status.png
 │       ├── network-connectivity.png
 │       └── service-health.png
 │
@@ -354,6 +383,7 @@ powershell-admin-toolkit/
 │   └── Public/
 │       ├── Export-SystemInventory.ps1
 │       ├── Get-EventLogSummary.ps1
+│       ├── Get-LocalAccountStatus.ps1
 │       ├── Get-ServiceHealth.ps1
 │       ├── Get-SystemInventory.ps1
 │       ├── Show-ServiceHealth.ps1
@@ -380,6 +410,7 @@ Le projet met progressivement en pratique plusieurs mécanismes importants de Po
 - création d'objets avec `[PSCustomObject]` ;
 - interrogation système avec CIM ;
 - sessions CIM pour l'administration distante ;
+- PowerShell Remoting avec `Invoke-Command` ;
 - splatting de paramètres ;
 - boucles `foreach` ;
 - logique conditionnelle ;
@@ -390,9 +421,10 @@ Le projet met progressivement en pratique plusieurs mécanismes importants de Po
 - export de données structurées vers CSV ;
 - résolution DNS avec `Resolve-DnsName` ;
 - diagnostic réseau avec `Test-Connection` et `Test-NetConnection` ;
-- analyse des journaux Windows avec `Get-WinEvent` ;
-- filtrage des événements avec `FilterHashtable` ;
-- agrégation et classification de données ;
+- interrogation des journaux Windows avec `Get-WinEvent` ;
+- interrogation des comptes locaux avec `Get-LocalUser` ;
+- manipulation et analyse des SID Windows ;
+- calcul de périodes et de durées avec les objets `DateTime` ;
 - filtrage et exploitation des résultats via le pipeline.
 
 ---
@@ -405,7 +437,9 @@ Le module est actuellement développé pour :
 - Windows Server ;
 - Windows PowerShell 5.1 et versions ultérieures.
 
-Certaines fonctionnalités d'administration distante nécessitent une configuration appropriée de WinRM et des droits suffisants sur les machines cibles.
+Certaines fonctionnalités d'administration distante nécessitent une configuration appropriée de WinRM sur les machines cibles.
+
+Les fonctions reposant sur les comptes utilisateurs locaux nécessitent également la disponibilité du module `Microsoft.PowerShell.LocalAccounts`.
 
 ---
 
@@ -423,10 +457,14 @@ Les fonctionnalités actuellement opérationnelles comprennent :
 - la résolution DNS d'une ou plusieurs cibles ;
 - le test de connectivité ICMP ;
 - le diagnostic de connectivité TCP sur un ou plusieurs ports ;
-- l'analyse des journaux Windows ;
+- la synthèse des journaux d'événements Windows ;
 - le comptage des événements par niveau de sévérité ;
-- l'évaluation d'un niveau de risque à partir des événements observés ;
-- l'analyse locale ou distante de plusieurs composants Windows ;
+- l'évaluation synthétique de l'état des journaux ;
+- l'inventaire des comptes utilisateurs locaux ;
+- l'identification des comptes intégrés sensibles par SID ;
+- la détection de comptes actifs inutilisés ou n'ayant jamais ouvert de session ;
 - le filtrage et l'exploitation des résultats via le pipeline PowerShell.
 
-D'autres fonctions d'administration, de diagnostic et d'automatisation Windows seront progressivement ajoutées au toolkit.
+Le toolkit se concentre actuellement principalement sur **l'inventaire, le diagnostic et l'analyse**.
+
+Les prochaines étapes viseront progressivement à introduire des fonctions permettant également d'effectuer des **actions d'administration Windows**, ainsi qu'à renforcer les tests automatisés et la gestion des erreurs.
