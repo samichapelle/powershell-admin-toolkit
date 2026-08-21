@@ -1,839 +1,361 @@
 # PowerShell Admin Toolkit
 
-Toolkit PowerShell conçu pour automatiser des tâches courantes
-d'\*\*\*\*administration systèmes Windows\*\*\*\*.
+Toolkit PowerShell conçu pour automatiser des tâches courantes de **diagnostic et d'administration de systèmes Windows**.
 
-Ce projet a pour objectif de développer des outils réutilisables pour
-l'administration d'un parc Windows tout en mettant en pratique les
-principaux concepts de PowerShell : modules, fonctions avancées,
-pipeline, objets structurés, CIM et gestion des erreurs.
+L'objectif est double : construire des outils réutilisables pour l'administration d'un parc Windows et mettre en pratique les principaux concepts PowerShell sur des cas d'usage concrets.
 
-Le toolkit est développé progressivement autour de cas d'usage concrets
-rencontrés en administration systèmes.
-
-**---**
+---
 
 ## Fonctionnalités
 
 ### Inventaire système
 
-La fonction `Get-SystemInventory` permet de collecter les principales
-informations matérielles et système d'une machine Windows :
+`Get-SystemInventory` collecte les principales informations d'une machine Windows : OS, uptime, CPU, RAM, IPv4, constructeur, modèle et stockage.
 
--   nom de la machine ;
-
--   constructeur et modèle ;
-
--   système d'exploitation et version ;
-
--   uptime ;
-
--   processeur ;
-
--   mémoire RAM ;
-
--   adresses IPv4 ;
-
--   informations sur les disques et l'espace disponible.
-
-La fonction fonctionne sur la machine locale et est conçue pour
-permettre également l'interrogation de machines distantes via
-\*\*\*\*CIM / WinRM\*\*\*\*.
-
-Exemple :
-
-``` powershell
-
+```powershell
 Get-SystemInventory
+Get-SystemInventory | Select-Object ComputerName, OS, RAM_GB
+Get-SystemInventory -ComputerName SRV01
 ```
 
-Il est également possible d'utiliser le pipeline PowerShell :
+`Export-SystemInventory` permet d'exporter les objets obtenus vers CSV.
 
-``` powershell
-
-$env:COMPUTERNAME | Get-SystemInventory
-```
-
-Ou de sélectionner uniquement certaines propriétés :
-
-``` powershell
-
+```powershell
 Get-SystemInventory |
-
-    Select-Object ComputerName, OS, RAM_GB
+    Export-SystemInventory -Path .\inventory.csv
 ```
 
-**---**
+### Services Windows
 
-### Export de l'inventaire
+`Get-ServiceHealth` contrôle l'état des services et leur type de démarrage.
 
-La fonction `Export-SystemInventory` permet d'exporter les objets
-produits par `Get-SystemInventory` dans un fichier CSV exploitable pour
-du reporting ou un inventaire de parc.
-
-Exemple :
-
-``` powershell
-
-Get-SystemInventory |
-
-    Export-SystemInventory -Path .\inventory.csv
-```
-
-Le fichier généré contient notamment :
-
-``` text
-
-ComputerName
-
-Manufacturer
-
-Model
-
-OS
-
-OSVersion
-
-UptimeDays
-
-CPU
-
-RAM_GB
-
-IPv4
-
-Disks
-```
-
-L'utilisation d'objets PowerShell structurés permet de conserver les
-données exploitables dans le pipeline plutôt que de produire uniquement
-du texte destiné à l'affichage.
-
-**---**
-
-### Supervision de l'état des services
-
-La fonction `Get-ServiceHealth` permet de contrôler l'état de services
-Windows sur une ou plusieurs machines.
-
-Pour chaque service analysé, la fonction retourne notamment :
-
--   le nom de la machine ;
-
--   le nom du service ;
-
--   son nom d'affichage ;
-
--   son état (`Running`, `Stopped`, etc.) ;
-
--   son type de démarrage ;
-
--   un indicateur `Healthy`.
-
-Exemple :
-
-``` powershell
-
+```powershell
 Get-ServiceHealth -ServiceName WinRM,W32Time,EventLog
-```
-
-La fonction ne considère pas automatiquement un service arrêté comme
-problématique.
-
-Le type de démarrage est également pris en compte : un service configuré
-en démarrage automatique mais arrêté est considéré comme non sain.
-
-``` text
-
-Status    StartType    Healthy
-
-------    ---------    -------
-
-Running   Auto         True
-
-Stopped   Manual       True
-
-Stopped   Auto         False
-```
-
-Les résultats retournés étant des objets PowerShell, ils peuvent être
-directement filtrés dans le pipeline.
-
-Par exemple, pour afficher uniquement les services présentant une
-anomalie :
-
-``` powershell
 
 Get-ServiceHealth |
-
-    Where-Object Healthy -eq $false
+    Where-Object Healthy -eq $false
 ```
 
-**---**
+`Show-ServiceHealth` fournit une vue interactive destinée à une consultation rapide.
 
-### Affichage de l'état des services
-
-La fonction `Show-ServiceHealth` fournit une vue destinée à une
-consultation interactive rapide par l'administrateur.
-
-Elle s'appuie sur les résultats de `Get-ServiceHealth` et ajoute une
-représentation visuelle de l'indicateur de santé :
-
--   `True` en vert ;
-
--   `False` en rouge.
-
-Exemple :
-
-``` powershell
-
+```powershell
 Show-ServiceHealth -ServiceName AdobeARMservice,EventLog
 ```
 
-Cette séparation permet de conserver `Get-ServiceHealth` comme une
-fonction produisant des objets exploitables pour l'automatisation, tout
-en proposant `Show-ServiceHealth` pour une lecture directe dans le
-terminal.
-
 ![Service Health Monitoring](./docs/screenshots/service-health.png)
 
-**---**
+`Set-ServiceStartup` permet de modifier de manière contrôlée le type de démarrage d'un service.
 
-### Gestion du démarrage des services
-
-La fonction `Set-ServiceStartup` permet de modifier de manière contrôlée
-le type de démarrage d'un service Windows.
-
-Les modes actuellement pris en charge sont :
-
--   `Automatic` ;
-
--   `Manual` ;
-
--   `Disabled`.
-
-Exemple :
-
-``` powershell
-
+```powershell
 Set-ServiceStartup -ServiceName W32Time -StartupType Automatic
+Set-ServiceStartup -ServiceName W32Time -StartupType Automatic -WhatIf
 ```
 
-La fonction retourne un objet PowerShell décrivant le résultat de
-l'opération :
-
-``` text
-
-ComputerName
-
-ServiceName
-
-PreviousStartupType
-
-NewStartupType
-
-Changed
-
-Success
-```
-
-L'état actuel du service est vérifié avant toute modification. Si le
-type de démarrage demandé correspond déjà à la configuration existante,
-aucune modification inutile n'est effectuée et la propriété `Changed`
-reste à `False`.
-
-La fonction prend également en charge le mécanisme PowerShell
-`ShouldProcess`, permettant de simuler une modification avec `-WhatIf` :
-
-``` powershell
-
-Set-ServiceStartup `
-
-    -ServiceName W32Time `
-
-    -StartupType Automatic `
-
-    -WhatIf
-```
-
-L'opération prévue est alors affichée sans modifier la configuration du
-service.
-
-Une confirmation interactive peut également être demandée avec
-`-Confirm`.
-
-Cette approche permet de rendre la fonction plus sûre pour les
-opérations d'administration et de conserver un comportement idempotent
-lorsque l'état demandé est déjà appliqué.
+La fonction vérifie l'état existant avant modification et retourne notamment `PreviousStartupType`, `NewStartupType`, `Changed` et `Success`.
 
 ![Service Startup Management](./docs/screenshots/service-startup.png)
 
-**---**
+### Diagnostic réseau
 
-### Diagnostic de connectivité réseau
+`Test-NetworkConnectivity` regroupe plusieurs contrôles : résolution DNS, adresses IP, ICMP et ports TCP.
 
-La fonction `Test-NetworkConnectivity` permet d'effectuer plusieurs
-contrôles de connectivité vers une ou plusieurs machines :
-
--   résolution DNS ;
-
--   récupération des adresses IP associées ;
-
--   test de connectivité ICMP ;
-
--   test de ports TCP ;
-
--   interrogation de plusieurs machines et plusieurs ports.
-
-Exemple :
-
-``` powershell
-
+```powershell
 Test-NetworkConnectivity -ComputerName google.com -Port 80,443
-```
-
-La fonction retourne des objets PowerShell structurés contenant
-notamment :
-
-``` text
-
-ComputerName
-
-DnsResolved
-
-ResolvedIP
-
-PingSuccess
-
-Port
-
-TcpOpen
-```
-
-Plusieurs machines peuvent être testées simultanément :
-
-``` powershell
-
-Test-NetworkConnectivity -ComputerName SRV01,SRV02 -Port 443,3389
-```
-
-Les résultats peuvent ensuite être exploités directement dans le
-pipeline. Par exemple, pour afficher uniquement les ports dont la
-connexion TCP a échoué :
-
-``` powershell
 
 Test-NetworkConnectivity -ComputerName SRV01,SRV02 -Port 443,3389 |
-
-    Where-Object TcpOpen -eq $false
+    Where-Object TcpOpen -eq $false
 ```
 
-Cette approche permet d'utiliser la fonction aussi bien pour un
-diagnostic ponctuel que comme composant d'un processus d'automatisation
-plus large.
+![Network Connectivity](./docs/screenshots/network-connectivity.png)
 
-![Test de connectivité
-réseau](./docs/screenshots/network-connectivity.png)
+### Journaux d'événements Windows
 
-**---**
+`Get-EventLogSummary` produit une synthèse des événements d'un journal Windows sur une période donnée et retourne notamment les erreurs, avertissements, événements critiques et un niveau de risque.
 
-### Analyse des journaux d'événements Windows
-
-La fonction `Get-EventLogSummary` fournit une synthèse des événements
-présents dans un journal Windows sur une période donnée.
-
-Elle permet notamment d'obtenir :
-
--   le nombre total d'événements ;
-
--   le nombre d'événements critiques ;
-
--   le nombre d'erreurs ;
-
--   le nombre d'avertissements ;
-
--   le nombre d'événements d'information ;
-
--   les événements de niveau verbose ou autres ;
-
--   un indicateur `Healthy` ;
-
--   un niveau de risque `RiskLevel`.
-
-Exemple :
-
-``` powershell
-
+```powershell
 Get-EventLogSummary
-```
-
-Il est possible de sélectionner le journal et la période à analyser :
-
-``` powershell
-
 Get-EventLogSummary -LogName Application -LastHours 24
 ```
 
-La fonction retourne un objet structuré de ce type :
-
-``` text
-
-ComputerName
-
-LogName
-
-LastHours
-
-TotalEvents
-
-Critical
-
-Errors
-
-Warnings
-
-Information
-
-Verbose
-
-Other
-
-Healthy
-
-RiskLevel
-```
-
-L'évaluation de l'état permet d'obtenir rapidement une indication
-synthétique de la santé du journal analysé tout en conservant le détail
-du nombre d'événements par niveau.
-
 ![Event Log Summary](./docs/screenshots/event-log-summary.png)
 
-**---**
+---
 
-### Analyse des comptes locaux
+## Administration des comptes locaux
 
-La fonction `Get-LocalAccountStatus` permet d'inventorier les comptes
-utilisateurs locaux et d'effectuer plusieurs contrôles simples liés à
-leur état et à leur utilisation.
+### Analyse des comptes
 
-Pour chaque compte, la fonction retourne notamment :
+`Get-LocalAccountStatus` inventorie les comptes locaux et effectue plusieurs contrôles simples liés à leur état et à leur utilisation.
 
--   le nom de la machine ;
-
--   le nom du compte ;
-
--   son SID ;
-
--   son type ;
-
--   son état activé ou désactivé ;
-
--   la date de dernière connexion ;
-
--   le nombre de jours depuis la dernière connexion ;
-
--   les propriétés liées au mot de passe ;
-
--   un niveau de risque ;
-
--   la raison d'une éventuelle alerte.
-
-Exemple :
-
-``` powershell
-
+```powershell
 Get-LocalAccountStatus
+
+Get-LocalAccountStatus |
+    Where-Object Risk -ne 'OK'
 ```
 
-Les comptes intégrés `Administrator` et `Guest` sont identifiés à partir
-de leur \*\*\*\*SID/RID\*\*\*\* plutôt que de leur nom.
+Les comptes intégrés Administrator et Guest sont identifiés à partir de leur **SID/RID**, indépendamment de la langue de Windows ou d'un éventuel renommage.
 
-Cette méthode permet de reconnaître ces comptes indépendamment de la
-langue de Windows ou d'un éventuel renommage :
+La fonction peut notamment signaler un compte intégré sensible activé, un compte actif n'ayant jamais ouvert de session ou un compte inutilisé depuis un seuil configurable.
 
-``` text
-
-RID -500    BuiltInAdministrator
-
-RID -501    BuiltInGuest
-```
-
-La fonction signale notamment :
-
--   un compte Administrateur intégré activé ;
-
--   un compte Invité intégré activé ;
-
--   un compte actif n'ayant jamais ouvert de session ;
-
--   un compte actif inutilisé depuis un nombre configurable de jours.
-
-Le seuil d'inactivité est fixé à 90 jours par défaut et peut être
-modifié :
-
-``` powershell
-
+```powershell
 Get-LocalAccountStatus -InactiveDays 60
-```
-
-Les résultats peuvent être filtrés directement dans le pipeline afin de
-ne conserver que les comptes nécessitant une attention :
-
-``` powershell
-
-Get-LocalAccountStatus |
-
-    Where-Object Risk -ne 'OK'
-```
-
-Une vue synthétique peut également être obtenue :
-
-``` powershell
-
-Get-LocalAccountStatus |
-
-    Select-Object UserName, AccountType, Enabled, DaysSinceLastLogon, Risk, RiskReason |
-
-    Format-Table
 ```
 
 ![Local Account Status](./docs/screenshots/local-account-status.png)
 
-**---**
+### Cycle de vie des utilisateurs
 
-### Création de comptes utilisateurs locaux
+Le toolkit permet de gérer les principales opérations sur les comptes locaux.
 
-La fonction `New-LocalUserAccount` permet de créer un compte utilisateur
-local de manière contrôlée. Le mot de passe est fourni sous forme de
-`SecureString` et la fonction peut également définir un nom complet, une
-description et l'appartenance à un groupe local.
-
-``` powershell
-$Password = Read-Host "Mot de passe du compte de démonstration" -AsSecureString
+```powershell
+# Création
+$Password = Read-Host "Mot de passe" -AsSecureString
 
 New-LocalUserAccount `
     -UserName "demouser" `
     -Password $Password `
     -FullName "Utilisateur de démonstration" `
     -Description "Compte de test du toolkit"
-```
 
-La fonction vérifie l'existence du compte avant sa création, prend en
-charge `-WhatIf` et `-Confirm`, puis retourne un objet structuré
-décrivant le résultat.
-
-![Local User Creation](./docs/screenshots/local-user-creation.png)
-
-------------------------------------------------------------------------
-
-### Désactivation de comptes utilisateurs locaux
-
-La fonction `Disable-LocalUserAccount` permet de désactiver un compte
-local tout en contrôlant son état avant modification.
-
-``` powershell
-Disable-LocalUserAccount -UserName demouser -WhatIf
+# Désactivation / activation
 Disable-LocalUserAccount -UserName demouser
+Enable-LocalUserAccount -UserName demouser
+
+# Changement de mot de passe
+$NewPassword = Read-Host "Nouveau mot de passe" -AsSecureString
+Set-LocalUserPassword -UserName demouser -Password $NewPassword
+
+# Suppression
+Remove-LocalUserAccount -UserName demouser
 ```
 
-La fonction est idempotente : si le compte est déjà désactivé, aucune
-modification inutile n'est effectuée et `Changed` reste à `False`.
+Les fonctions de modification prennent en charge `ShouldProcess`, permettant notamment l'utilisation de `-WhatIf` et `-Confirm`.
 
-![Local User Disable](./docs/screenshots/local-user-disable.png)
+![Local User Lifecycle](./docs/screenshots/local-user-lifecycle.png)
 
-------------------------------------------------------------------------
+---
 
-### Gestion de l'appartenance aux groupes locaux
+## Administration des groupes locaux
 
-Les fonctions `Add-LocalUserToGroup` et `Remove-LocalUserFromGroup`
-permettent de gérer l'appartenance des utilisateurs aux groupes locaux
-Windows.
+Création et suppression de groupes :
 
-``` powershell
-Add-LocalUserToGroup -UserName testadmin -GroupName Utilisateurs
-Remove-LocalUserFromGroup -UserName testadmin -GroupName Utilisateurs
+```powershell
+Add-LocalGroup `
+    -GroupName "Toolkit-Operators" `
+    -Description "Groupe de test du toolkit"
+
+Remove-LocalGroup -GroupName "Toolkit-Operators"
 ```
 
-L'état existant est vérifié avant toute modification. Les opérations
-sont idempotentes et prennent en charge `-WhatIf` et `-Confirm`.
+Gestion de l'appartenance d'un utilisateur :
 
-![Local Group Membership](./docs/screenshots/local-group-membership.png)
+```powershell
+Add-LocalUserToGroup `
+    -UserName testadmin `
+    -GroupName Utilisateurs
 
-------------------------------------------------------------------------
+Remove-LocalUserFromGroup `
+    -UserName testadmin `
+    -GroupName Utilisateurs
+```
+
+Les fonctions vérifient l'état existant afin d'éviter les modifications inutiles et retournent des objets structurés indiquant le résultat de l'opération.
+
+![Local Group Management](./docs/screenshots/local-group-management.png)
+
+---
 
 ## Utilisation
 
-Importer le module :
+Importer le module depuis la racine du projet :
 
-``` powershell
-
+```powershell
 Import-Module .\PowerShellAdminToolkit
 ```
 
 Afficher les commandes disponibles :
 
-``` powershell
-
+```powershell
 Get-Command -Module PowerShellAdminToolkit
 ```
 
-Les commandes actuellement disponibles sont :
+Commandes actuellement exposées :
 
-``` text
+```text
+Add-LocalGroup
 Add-LocalUserToGroup
 Disable-LocalUserAccount
+Enable-LocalUserAccount
 Export-SystemInventory
 Get-EventLogSummary
 Get-LocalAccountStatus
 Get-ServiceHealth
 Get-SystemInventory
 New-LocalUserAccount
+Remove-LocalGroup
+Remove-LocalUserAccount
 Remove-LocalUserFromGroup
+Set-LocalUserPassword
 Set-ServiceStartup
 Show-ServiceHealth
 Test-NetworkConnectivity
 ```
 
-Pour obtenir davantage d'informations pendant l'exécution :
+---
 
-``` powershell
+## Sécurité et idempotence
 
-Get-SystemInventory |
+Les fonctions qui modifient le système utilisent les mécanismes standards de PowerShell.
 
-    Export-SystemInventory -Path .\inventory.csv -Verbose
+`-WhatIf` permet de visualiser une action sans l'exécuter :
+
+```powershell
+Remove-LocalUserAccount -UserName testuser -WhatIf
 ```
 
-**---**
+`-Confirm` permet de demander une confirmation avant une opération sensible :
+
+```powershell
+Remove-LocalGroup -GroupName "Toolkit-Operators" -Confirm
+```
+
+Lorsque cela est pertinent, l'état actuel est vérifié avant modification. Une opération déjà appliquée ne provoque donc pas de changement inutile.
+
+```text
+PreviousState : Enabled
+NewState      : Enabled
+Changed       : False
+Success       : True
+```
+
+Cette logique rend les fonctions plus prévisibles et facilite leur utilisation dans des scénarios d'automatisation.
+
+---
 
 ## Administration distante
 
-Plusieurs fonctions du toolkit sont conçues pour fonctionner aussi bien
-sur la machine locale que sur des machines distantes.
+Plusieurs fonctions sont conçues pour fonctionner localement ou à distance.
 
-`Get-SystemInventory` permet par exemple d'interroger une machine
-distante :
-
-``` powershell
-
+```powershell
 Get-SystemInventory -ComputerName SRV01
-```
-
-`Get-LocalAccountStatus` accepte également un ou plusieurs noms de
-machines :
-
-``` powershell
-
 Get-LocalAccountStatus -ComputerName SRV01,SRV02
 ```
 
-L'administration distante nécessite que les machines cibles soient
-accessibles et correctement configurées, notamment via \*\*\*\*WinRM /
-PowerShell Remoting\*\*\*\*.
+L'administration distante nécessite une configuration appropriée de **WinRM / PowerShell Remoting**.
 
-Certaines fonctions acceptent également les entrées provenant du
-pipeline afin de faciliter leur intégration dans des traitements
-automatisés.
-
-**---**
+---
 
 ## Structure du projet
 
-``` text
-
+```text
 powershell-admin-toolkit/
-
 │
-
 ├── README.md
-
 ├── config/
-
 ├── docs/
-
-│   └── screenshots/
-
-│       ├── event-log-summary.png
-
-│       ├── local-account-status.png
-
-│       ├── network-connectivity.png
-
-│       ├── service-health.png
-
-│       └── service-startup.png
-
+│   └── screenshots/
+│       ├── event-log-summary.png
+│       ├── local-account-status.png
+│       ├── local-group-management.png
+│       ├── local-group-membership.png
+│       ├── local-user-creation.png
+│       ├── local-user-disable.png
+│       ├── local-user-lifecycle.png
+│       ├── network-connectivity.png
+│       ├── service-health.png
+│       └── service-startup.png
 │
-
 ├── examples/
-
-│   └── usage-examples.ps1
-
+│   └── usage-examples.ps1
 │
-
 ├── PowerShellAdminToolkit/
-
-│   ├── PowerShellAdminToolkit.psd1
-
-│   ├── PowerShellAdminToolkit.psm1
-
-│   │
-
-│   ├── Private/
-
-│   │   └── Write-ToolkitLog.ps1
-
-│   │
-
-│   └── Public/
-
-│       ├── Export-SystemInventory.ps1
-
-│       ├── Get-EventLogSummary.ps1
-
-│       ├── Get-LocalAccountStatus.ps1
-
-│       ├── Get-ServiceHealth.ps1
-
-│       ├── Get-SystemInventory.ps1
-
-│       ├── Set-ServiceStartup.ps1
-
-│       ├── Show-ServiceHealth.ps1
-
-│       └── Test-NetworkConnectivity.ps1
-
+│   ├── PowerShellAdminToolkit.psd1
+│   ├── PowerShellAdminToolkit.psm1
+│   ├── Private/
+│   │   └── Write-ToolkitLog.ps1
+│   └── Public/
+│       ├── Add-LocalGroup.ps1
+│       ├── Add-LocalUserToGroup.ps1
+│       ├── Disable-LocalUserAccount.ps1
+│       ├── Enable-LocalUserAccount.ps1
+│       ├── Export-SystemInventory.ps1
+│       ├── Get-EventLogSummary.ps1
+│       ├── Get-LocalAccountStatus.ps1
+│       ├── Get-ServiceHealth.ps1
+│       ├── Get-SystemInventory.ps1
+│       ├── New-LocalUserAccount.ps1
+│       ├── Remove-LocalGroup.ps1
+│       ├── Remove-LocalUserAccount.ps1
+│       ├── Remove-LocalUserFromGroup.ps1
+│       ├── Set-LocalUserPassword.ps1
+│       ├── Set-ServiceStartup.ps1
+│       ├── Show-ServiceHealth.ps1
+│       └── Test-NetworkConnectivity.ps1
 │
-
 └── tests/
-
-    └── PowerShellAdminToolkit.Tests.ps1
+    └── PowerShellAdminToolkit.Tests.ps1
 ```
 
-Les fonctions du dossier `Public` constituent les commandes exposées par
-le module.
+Les fonctions du dossier `Public` constituent les commandes exposées par le module. Le dossier `Private` contient les fonctions destinées au fonctionnement interne.
 
-Les fonctions du dossier `Private` sont destinées au fonctionnement
-interne du toolkit et ne sont pas directement exposées à l'utilisateur.
-
-**---**
+---
 
 ## Concepts PowerShell mis en œuvre
 
-Le projet met progressivement en pratique plusieurs mécanismes
-importants de PowerShell :
+Le projet met notamment en pratique :
 
--   fonctions avancées avec `[CmdletBinding()]` ;
+- fonctions avancées avec `[CmdletBinding()]` ;
+- paramètres typés et validation ;
+- pipeline et `[PSCustomObject]` ;
+- CIM et PowerShell Remoting ;
+- gestion des erreurs avec `try`, `catch` et `finally` ;
+- modules `.psm1` et manifestes `.psd1` ;
+- interrogation système, réseau et journaux Windows ;
+- gestion des comptes et groupes locaux ;
+- `SecureString` pour les mots de passe ;
+- manipulation et analyse des SID Windows ;
+- `ShouldProcess`, `-WhatIf` et `-Confirm` ;
+- opérations idempotentes avec vérification de l'état existant ;
+- export et exploitation de données structurées.
 
--   paramètres typés et validation ;
-
--   utilisation du pipeline ;
-
--   `begin`, `process` et `end` ;
-
--   création d'objets avec `[PSCustomObject]` ;
-
--   interrogation système avec CIM ;
-
--   sessions CIM pour l'administration distante ;
-
--   PowerShell Remoting avec `Invoke-Command` ;
-
--   splatting de paramètres ;
-
--   boucles `foreach` ;
-
--   logique conditionnelle ;
-
--   gestion des erreurs avec `try`, `catch` et `finally` ;
-
--   séparation entre collecte de données et présentation ;
-
--   modules PowerShell (`.psm1`) ;
-
--   manifestes de modules (`.psd1`) ;
-
--   export de données structurées vers CSV ;
-
--   résolution DNS avec `Resolve-DnsName` ;
-
--   diagnostic réseau avec `Test-Connection` et `Test-NetConnection` ;
-
--   interrogation des journaux Windows avec `Get-WinEvent` ;
-
--   interrogation des comptes locaux avec `Get-LocalUser` ;
-
--   création et désactivation de comptes locaux avec les cmdlets Windows
-    dédiées ;
-
--   gestion de l'appartenance aux groupes locaux ;
-
--   manipulation sécurisée des mots de passe avec `SecureString` ;
-
--   manipulation et analyse des SID Windows ;
-
--   calcul de périodes et de durées avec les objets `DateTime` ;
-
--   modification de la configuration des services avec `Set-Service` ;
-
--   sécurisation des actions avec `ShouldProcess`, `-WhatIf` et
-    `-Confirm` ;
-
--   conception d'opérations idempotentes avec vérification de l'état
-    existant ;
-
--   filtrage et exploitation des résultats via le pipeline.
-
-**---**
+---
 
 ## Compatibilité
 
 Le module est actuellement développé pour :
 
--   Windows 10 / Windows 11 ;
+- Windows 10 / Windows 11 ;
+- Windows Server ;
+- Windows PowerShell 5.1 et versions ultérieures.
 
--   Windows Server ;
+Certaines fonctionnalités nécessitent le module `Microsoft.PowerShell.LocalAccounts`, une configuration WinRM appropriée pour l'administration distante ou des privilèges administrateur pour les opérations modifiant le système.
 
--   Windows PowerShell 5.1 et versions ultérieures.
-
-Certaines fonctionnalités d'administration distante nécessitent une
-configuration appropriée de WinRM sur les machines cibles.
-
-Les fonctions reposant sur les comptes utilisateurs locaux nécessitent
-également la disponibilité du module
-`Microsoft.PowerShell.LocalAccounts`.
-
-Certaines opérations modifiant la configuration du système peuvent
-nécessiter l'exécution de PowerShell avec des privilèges administrateur.
-
-**---**
+---
 
 ## État du projet
 
-Le projet est en cours de développement et couvre désormais deux axes
-complémentaires : le **diagnostic d'un environnement Windows** et
-l'**exécution d'actions d'administration contrôlées**.
+Le toolkit couvre désormais deux axes complémentaires.
 
-Les fonctionnalités actuellement opérationnelles comprennent :
+**Diagnostic et observation :**
 
--   inventaire matériel et système et export CSV ;
--   contrôle et gestion du démarrage des services Windows ;
--   diagnostic DNS, ICMP et TCP ;
--   synthèse des journaux d'événements Windows ;
--   inventaire et analyse des comptes utilisateurs locaux ;
--   identification des comptes intégrés sensibles par SID ;
--   création et désactivation de comptes utilisateurs locaux ;
--   ajout et retrait d'utilisateurs dans les groupes locaux ;
--   vérification de l'état existant avant modification ;
--   opérations idempotentes avec indicateur `Changed` ;
--   sécurisation des actions avec `ShouldProcess`, `-WhatIf` et
-    `-Confirm` ;
--   résultats structurés exploitables dans le pipeline PowerShell.
+- inventaire matériel et système ;
+- export CSV ;
+- contrôle des services ;
+- diagnostic DNS, ICMP et TCP ;
+- synthèse des journaux Windows ;
+- analyse des comptes locaux.
 
-L'objectif est de constituer progressivement une **boîte à outils
-d'administration systèmes Windows**, dans laquelle les fonctions de
-diagnostic servent de support aux opérations d'administration.
+**Administration contrôlée :**
 
-Les prochaines étapes viseront à poursuivre les fonctions
-d'administration, renforcer les tests automatisés et étendre
-progressivement les scénarios Windows et Windows Server.
+- création, activation, désactivation et suppression de comptes locaux ;
+- changement de mot de passe ;
+- création et suppression de groupes locaux ;
+- gestion de l'appartenance aux groupes ;
+- modification du démarrage des services ;
+- opérations protégées par `ShouldProcess` ;
+- vérification de l'état existant et comportement idempotent.
+
+L'objectif est de constituer progressivement une **boîte à outils d'administration systèmes Windows réutilisable**, tout en démontrant une utilisation structurée de PowerShell sur des cas d'usage proches de l'administration réelle.
+
+Les prochaines étapes porteront principalement sur les **tests automatisés**, la consolidation de la documentation et, si nécessaire, l'ajout de nouveaux scénarios Windows / Windows Server.
