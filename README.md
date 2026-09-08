@@ -2,7 +2,7 @@
 
 Toolkit PowerShell conçu pour automatiser des tâches courantes de **diagnostic et d'administration de systèmes Windows**.
 
-L'objectif est double : construire des outils réutilisables pour l'administration d'un parc Windows et mettre en pratique les principaux concepts PowerShell sur des cas d'usage concrets.
+L'objectif est double : construire des outils réutilisables pour l'administration d'un environnement Windows et mettre en pratique les principaux concepts PowerShell sur des cas d'usage concrets : inventaire, diagnostic, gestion des services, comptes locaux et administration Active Directory.
 
 ---
 
@@ -10,7 +10,7 @@ L'objectif est double : construire des outils réutilisables pour l'administrati
 
 ### Inventaire système
 
-`Get-SystemInventory` collecte les principales informations d'une machine Windows : OS, uptime, CPU, RAM, IPv4, constructeur, modèle et stockage.
+`Get-SystemInventory` collecte les principales informations d'une machine Windows : système d'exploitation, uptime, CPU, RAM, IPv4, constructeur, modèle et stockage.
 
 ```powershell
 Get-SystemInventory
@@ -51,8 +51,6 @@ Set-ServiceStartup -ServiceName W32Time -StartupType Automatic
 Set-ServiceStartup -ServiceName W32Time -StartupType Automatic -WhatIf
 ```
 
-La fonction vérifie l'état existant avant modification et retourne notamment `PreviousStartupType`, `NewStartupType`, `Changed` et `Success`.
-
 ![Service Startup Management](./docs/screenshots/service-startup.png)
 
 ### Diagnostic réseau
@@ -70,7 +68,7 @@ Test-NetworkConnectivity -ComputerName SRV01,SRV02 -Port 443,3389 |
 
 ### Journaux d'événements Windows
 
-`Get-EventLogSummary` produit une synthèse des événements d'un journal Windows sur une période donnée et retourne notamment les erreurs, avertissements, événements critiques et un niveau de risque.
+`Get-EventLogSummary` produit une synthèse des événements d'un journal Windows sur une période donnée.
 
 ```powershell
 Get-EventLogSummary
@@ -85,7 +83,7 @@ Get-EventLogSummary -LogName Application -LastHours 24
 
 ### Analyse des comptes
 
-`Get-LocalAccountStatus` inventorie les comptes locaux et effectue plusieurs contrôles simples liés à leur état et à leur utilisation.
+`Get-LocalAccountStatus` inventorie les comptes locaux et effectue plusieurs contrôles liés à leur état et à leur utilisation.
 
 ```powershell
 Get-LocalAccountStatus
@@ -106,10 +104,7 @@ Get-LocalAccountStatus -InactiveDays 60
 
 ### Cycle de vie des utilisateurs
 
-Le toolkit permet de gérer les principales opérations sur les comptes locaux.
-
 ```powershell
-# Création
 $Password = Read-Host "Mot de passe" -AsSecureString
 
 New-LocalUserAccount `
@@ -118,15 +113,12 @@ New-LocalUserAccount `
     -FullName "Utilisateur de démonstration" `
     -Description "Compte de test du toolkit"
 
-# Désactivation / activation
 Disable-LocalUserAccount -UserName demouser
 Enable-LocalUserAccount -UserName demouser
 
-# Changement de mot de passe
 $NewPassword = Read-Host "Nouveau mot de passe" -AsSecureString
 Set-LocalUserPassword -UserName demouser -Password $NewPassword
 
-# Suppression
 Remove-LocalUserAccount -UserName demouser
 ```
 
@@ -166,12 +158,193 @@ Les fonctions vérifient l'état existant afin d'éviter les modifications inuti
 
 ---
 
+## Administration Active Directory
+
+La partie Active Directory du toolkit est testée dans un laboratoire dédié sous **Windows Server 2022 Standard Evaluation**.
+
+Elle couvre volontairement un ensemble restreint d'opérations courantes d'administration :
+
+- audit des comptes utilisateurs ;
+- création d'utilisateurs ;
+- activation et désactivation de comptes ;
+- ajout et retrait d'utilisateurs dans les groupes.
+
+### Audit des comptes AD
+
+`Get-ADAccountStatus` analyse les comptes utilisateurs et met en évidence plusieurs situations à contrôler :
+
+- compte actif n'ayant jamais ouvert de session ;
+- compte inactif depuis un seuil configurable ;
+- mot de passe expiré ;
+- mot de passe configuré pour ne jamais expirer.
+
+```powershell
+Get-ADAccountStatus `
+    -ComputerName "192.168.56.10" `
+    -Credential $cred `
+    -SearchBase "OU=Utilisateurs,DC=toolkit,DC=local"
+```
+
+![AD Account Status](./docs/screenshots/ad-account-status.png)
+
+### Création d'un utilisateur AD
+
+```powershell
+$password = Read-Host "Mot de passe du nouvel utilisateur" -AsSecureString
+
+New-ADUserAccount `
+    -ComputerName "192.168.56.10" `
+    -Credential $cred `
+    -SamAccountName "david.leroy" `
+    -Name "David Leroy" `
+    -Path "OU=Utilisateurs,DC=toolkit,DC=local" `
+    -AccountPassword $password
+```
+
+La fonction vérifie l'existence du compte avant création. Une nouvelle exécution sur un compte existant ne provoque pas de nouvelle modification.
+
+![AD User Creation](./docs/screenshots/ad-user-creation.png)
+
+### Activation et désactivation
+
+```powershell
+Disable-ADUserAccount `
+    -ComputerName "192.168.56.10" `
+    -Credential $cred `
+    -SamAccountName "david.leroy"
+
+Enable-ADUserAccount `
+    -ComputerName "192.168.56.10" `
+    -Credential $cred `
+    -SamAccountName "david.leroy"
+```
+
+Les fonctions vérifient l'état existant du compte avant modification et prennent en charge `-WhatIf`.
+
+![AD User Lifecycle](./docs/screenshots/ad-user-lifecycle.png)
+
+### Appartenance aux groupes AD
+
+```powershell
+Add-ADUserToGroup `
+    -ComputerName "192.168.56.10" `
+    -Credential $cred `
+    -SamAccountName "david.leroy" `
+    -GroupName "GG-IT"
+
+Remove-ADUserFromGroup `
+    -ComputerName "192.168.56.10" `
+    -Credential $cred `
+    -SamAccountName "david.leroy" `
+    -GroupName "GG-IT"
+```
+
+L'ajout et le retrait sont idempotents : si l'état demandé est déjà atteint, aucune modification supplémentaire n'est effectuée.
+
+![AD Group Membership](./docs/screenshots/ad-group-membership.png)
+
+---
+
+## Architecture du laboratoire Active Directory
+
+Le laboratoire permet de développer le toolkit sur la machine hôte tout en exécutant les opérations Active Directory dans un environnement Windows Server isolé.
+
+### Environnement utilisé
+
+| Élément | Configuration |
+| --- | --- |
+| Poste hôte | Windows 11 Home |
+| Hyperviseur | Oracle VirtualBox |
+| Machine virtuelle | Windows Server 2022 Standard Evaluation |
+| Contrôleur de domaine | `DC01` |
+| Domaine / forêt | `toolkit.local` |
+| Nom NetBIOS | `TOOLKIT` |
+| Rôles serveur | Active Directory Domain Services (AD DS) + DNS |
+| Réseau d'administration | VirtualBox Host-Only `192.168.56.0/24` |
+| Adresse de `DC01` | `192.168.56.10` |
+| Accès Internet de la VM | Adaptateur VirtualBox NAT |
+| Administration distante | PowerShell Remoting / WinRM |
+
+```text
+┌──────────────────────────────────────────┐
+│ Poste hôte                              │
+│ Windows 11 Home                         │
+│ PowerShell + PowerShell Admin Toolkit   │
+└───────────────────┬──────────────────────┘
+                    │
+                    │ WinRM / PowerShell Remoting
+                    │ Host-Only : 192.168.56.0/24
+                    │
+                    ▼
+┌──────────────────────────────────────────┐
+│ Oracle VirtualBox                       │
+│                                          │
+│  DC01 - Windows Server 2022             │
+│  192.168.56.10                          │
+│  AD DS + DNS                            │
+│  Domaine : toolkit.local                │
+│  Module ActiveDirectory                 │
+│                                          │
+│  NAT ──────────────────────► Internet   │
+└──────────────────────────────────────────┘
+```
+
+![AD Lab Users](./docs/screenshots/ad-lab-users.png)
+
+### Contrainte Windows Home et solution retenue
+
+Le scénario initial prévoyait d'installer les outils **RSAT Active Directory** directement sur le poste hôte afin d'y utiliser le module PowerShell `ActiveDirectory`.
+
+Le poste de développement fonctionne cependant sous **Windows 11 Home**. Lors des tests, la fonctionnalité `Rsat.ActiveDirectory.DS-LDS.Tools` restait dans l'état `Staged` et le module `ActiveDirectory` n'était pas disponible depuis l'hôte.
+
+Plutôt que de modifier l'édition de Windows ou de déplacer le développement du toolkit dans la VM, l'architecture a été adaptée :
+
+1. le toolkit reste développé et lancé depuis le poste hôte ;
+2. une session PowerShell distante est établie vers `DC01` ;
+3. les commandes nécessitant le module `ActiveDirectory` sont exécutées sur le contrôleur de domaine via `Invoke-Command` ;
+4. les objets PowerShell obtenus sont retournés au poste hôte.
+
+Exemple de validation depuis l'hôte :
+
+```powershell
+$cred = Get-Credential "TOOLKIT\Administrateur"
+
+Invoke-Command `
+    -ComputerName 192.168.56.10 `
+    -Credential $cred `
+    -ScriptBlock {
+        Get-ADUser -Filter * `
+            -SearchBase "OU=Utilisateurs,DC=toolkit,DC=local" |
+            Select-Object Name, SamAccountName, Enabled
+    }
+```
+
+![AD Remote Query](./docs/screenshots/ad-remote-query.png)
+
+### Sécurité de l'administration distante
+
+Le laboratoire utilise un réseau **Host-Only** dédié aux échanges entre le poste hôte et `DC01`.
+
+Comme la connexion WinRM est réalisée vers une adresse IP et que le poste hôte n'est pas membre du domaine `toolkit.local`, `192.168.56.10` est explicitement ajouté aux `TrustedHosts` du client WinRM.
+
+```powershell
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value "192.168.56.10"
+```
+
+Seul le contrôleur de domaine du laboratoire est déclaré comme hôte de confiance.
+
+Les règles WinRM **entrantes du poste hôte restent désactivées** : celui-ci agit comme client d'administration et n'est pas exposé comme serveur WinRM. Les identifiants du domaine sont demandés avec `Get-Credential` et ne sont pas stockés dans le code.
+
+Cette configuration permet de conserver un laboratoire simple et reproductible tout en séparant clairement le poste de développement du serveur Active Directory.
+
+---
+
 ## Utilisation
 
 Importer le module depuis la racine du projet :
 
 ```powershell
-Import-Module .\PowerShellAdminToolkit
+Import-Module .\PowerShellAdminToolkit\PowerShellAdminToolkit.psd1 -Force
 ```
 
 Afficher les commandes disponibles :
@@ -180,19 +353,25 @@ Afficher les commandes disponibles :
 Get-Command -Module PowerShellAdminToolkit
 ```
 
-Commandes actuellement exposées :
+Les principales commandes du toolkit sont :
 
 ```text
+Add-ADUserToGroup
 Add-LocalGroup
 Add-LocalUserToGroup
+Disable-ADUserAccount
 Disable-LocalUserAccount
+Enable-ADUserAccount
 Enable-LocalUserAccount
 Export-SystemInventory
+Get-ADAccountStatus
 Get-EventLogSummary
 Get-LocalAccountStatus
 Get-ServiceHealth
 Get-SystemInventory
+New-ADUserAccount
 New-LocalUserAccount
+Remove-ADUserFromGroup
 Remove-LocalGroup
 Remove-LocalUserAccount
 Remove-LocalUserFromGroup
@@ -222,27 +401,28 @@ Remove-LocalGroup -GroupName "Toolkit-Operators" -Confirm
 
 Lorsque cela est pertinent, l'état actuel est vérifié avant modification. Une opération déjà appliquée ne provoque donc pas de changement inutile.
 
+Exemple :
+
 ```text
-PreviousState : Enabled
-NewState      : Enabled
-Changed       : False
-Success       : True
+ComputerName   SamAccountName   Action           Changed
+------------   --------------   ------           -------
+192.168.56.10  david.leroy      AlreadyEnabled   False
 ```
 
-Cette logique rend les fonctions plus prévisibles et facilite leur utilisation dans des scénarios d'automatisation.
+Cette logique est également appliquée aux fonctions Active Directory lorsqu'un utilisateur est déjà activé, désactivé ou membre d'un groupe.
 
 ---
 
 ## Administration distante
 
-Plusieurs fonctions sont conçues pour fonctionner localement ou à distance.
+Plusieurs fonctions du toolkit sont conçues pour fonctionner localement ou à distance.
 
 ```powershell
 Get-SystemInventory -ComputerName SRV01
 Get-LocalAccountStatus -ComputerName SRV01,SRV02
 ```
 
-L'administration distante nécessite une configuration appropriée de **WinRM / PowerShell Remoting**.
+Pour la partie Active Directory du laboratoire, l'administration distante répond également à une contrainte d'environnement : le module `ActiveDirectory` est exécuté sur `DC01`, tandis que les fonctions du toolkit sont appelées depuis le poste hôte.
 
 ---
 
@@ -255,13 +435,15 @@ powershell-admin-toolkit/
 ├── config/
 ├── docs/
 │   └── screenshots/
+│       ├── ad-account-status.png
+│       ├── ad-group-membership.png
+│       ├── ad-lab-users.png
+│       ├── ad-remote-query.png
+│       ├── ad-user-creation.png
+│       ├── ad-user-lifecycle.png
 │       ├── event-log-summary.png
 │       ├── local-account-status.png
 │       ├── local-group-management.png
-│       ├── local-group-membership.png
-│       ├── local-user-creation.png
-│       ├── local-user-disable.png
-│       ├── local-user-lifecycle.png
 │       ├── network-connectivity.png
 │       ├── service-health.png
 │       └── service-startup.png
@@ -275,16 +457,22 @@ powershell-admin-toolkit/
 │   ├── Private/
 │   │   └── Write-ToolkitLog.ps1
 │   └── Public/
+│       ├── Add-ADUserToGroup.ps1
 │       ├── Add-LocalGroup.ps1
 │       ├── Add-LocalUserToGroup.ps1
+│       ├── Disable-ADUserAccount.ps1
 │       ├── Disable-LocalUserAccount.ps1
+│       ├── Enable-ADUserAccount.ps1
 │       ├── Enable-LocalUserAccount.ps1
 │       ├── Export-SystemInventory.ps1
+│       ├── Get-ADAccountStatus.ps1
 │       ├── Get-EventLogSummary.ps1
 │       ├── Get-LocalAccountStatus.ps1
 │       ├── Get-ServiceHealth.ps1
 │       ├── Get-SystemInventory.ps1
+│       ├── New-ADUserAccount.ps1
 │       ├── New-LocalUserAccount.ps1
+│       ├── Remove-ADUserFromGroup.ps1
 │       ├── Remove-LocalGroup.ps1
 │       ├── Remove-LocalUserAccount.ps1
 │       ├── Remove-LocalUserFromGroup.ps1
@@ -296,8 +484,6 @@ powershell-admin-toolkit/
 └── tests/
     └── PowerShellAdminToolkit.Tests.ps1
 ```
-
-Les fonctions du dossier `Public` constituent les commandes exposées par le module. Le dossier `Private` contient les fonctions destinées au fonctionnement interne.
 
 ---
 
@@ -313,7 +499,9 @@ Le projet met notamment en pratique :
 - modules `.psm1` et manifestes `.psd1` ;
 - interrogation système, réseau et journaux Windows ;
 - gestion des comptes et groupes locaux ;
-- `SecureString` pour les mots de passe ;
+- administration Active Directory ;
+- exécution distante via WinRM et `Invoke-Command` ;
+- `SecureString` et `PSCredential` pour les identifiants ;
 - manipulation et analyse des SID Windows ;
 - `ShouldProcess`, `-WhatIf` et `-Confirm` ;
 - opérations idempotentes avec vérification de l'état existant ;
@@ -321,41 +509,51 @@ Le projet met notamment en pratique :
 
 ---
 
-## Compatibilité
+## Compatibilité et prérequis
 
-Le module est actuellement développé pour :
+Le toolkit est développé pour les environnements Windows et Windows Server.
 
-- Windows 10 / Windows 11 ;
-- Windows Server ;
-- Windows PowerShell 5.1 et versions ultérieures.
+Selon les fonctions utilisées, il peut nécessiter :
 
-Certaines fonctionnalités nécessitent le module `Microsoft.PowerShell.LocalAccounts`, une configuration WinRM appropriée pour l'administration distante ou des privilèges administrateur pour les opérations modifiant le système.
+- Windows PowerShell 5.1 ou une version ultérieure compatible ;
+- `Microsoft.PowerShell.LocalAccounts` pour l'administration locale ;
+- WinRM / PowerShell Remoting pour l'administration distante ;
+- des privilèges administrateur pour les opérations modifiant le système ;
+- le module `ActiveDirectory` sur la machine qui exécute les opérations AD.
+
+Le laboratoire de démonstration utilise **Windows 11 Home comme poste hôte**, **Oracle VirtualBox** comme hyperviseur et **Windows Server 2022 Standard Evaluation** comme contrôleur de domaine.
 
 ---
 
 ## État du projet
 
-Le toolkit couvre désormais deux axes complémentaires.
+Le toolkit couvre actuellement trois axes complémentaires.
 
-**Diagnostic et observation :**
+**Diagnostic et observation**
 
 - inventaire matériel et système ;
 - export CSV ;
 - contrôle des services ;
 - diagnostic DNS, ICMP et TCP ;
 - synthèse des journaux Windows ;
-- analyse des comptes locaux.
+- analyse des comptes locaux et Active Directory.
 
-**Administration contrôlée :**
+**Administration locale**
 
 - création, activation, désactivation et suppression de comptes locaux ;
 - changement de mot de passe ;
 - création et suppression de groupes locaux ;
 - gestion de l'appartenance aux groupes ;
-- modification du démarrage des services ;
-- opérations protégées par `ShouldProcess` ;
-- vérification de l'état existant et comportement idempotent.
+- modification contrôlée du démarrage des services.
 
-L'objectif est de constituer progressivement une **boîte à outils d'administration systèmes Windows réutilisable**, tout en démontrant une utilisation structurée de PowerShell sur des cas d'usage proches de l'administration réelle.
+**Administration Active Directory**
 
-Les prochaines étapes porteront principalement sur les **tests automatisés**, la consolidation de la documentation et, si nécessaire, l'ajout de nouveaux scénarios Windows / Windows Server.
+- audit des comptes utilisateurs ;
+- création de comptes ;
+- activation et désactivation ;
+- ajout et retrait d'utilisateurs dans les groupes ;
+- exécution distante depuis un poste d'administration distinct.
+
+Les opérations de modification privilégient `ShouldProcess`, `-WhatIf` et la vérification de l'état existant afin de conserver un comportement contrôlé et idempotent.
+
+La prochaine étape du projet est l'ajout de **tests automatisés avec Pester**, avant la revue et la finalisation du toolkit.
