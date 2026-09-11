@@ -461,6 +461,10 @@ powershell-admin-toolkit/
 │       ├── event-log-summary.png
 │       ├── local-account-status.png
 │       ├── local-group-management.png
+│       ├── local-group-membership.png
+│       ├── local-user-creation.png
+│       ├── local-user-disable.png
+│       ├── local-user-lifecycle.png
 │       ├── network-connectivity.png
 │       ├── pester-tests.png
 │       ├── service-health.png
@@ -523,7 +527,8 @@ Le projet met notamment en pratique :
 - manipulation et analyse des SID Windows ;
 - `ShouldProcess`, `-WhatIf` et `-Confirm` ;
 - opérations idempotentes avec vérification de l'état existant ;
-- export et exploitation de données structurées.
+- export et exploitation de données structurées ;
+- tests automatisés avec Pester et utilisation de mocks.
 
 ---
 
@@ -544,35 +549,12 @@ Le laboratoire de démonstration utilise **Windows 11 Home comme poste hôte**, 
 
 ---
 
-## État du projet
+## Conclusion
 
-Le toolkit couvre actuellement quatre axes complémentaires.
+Cette première version du **PowerShell Admin Toolkit** constitue un ensemble cohérent d'outils couvrant plusieurs situations représentatives de l'administration Windows : diagnostic système et réseau, gestion des services, administration des comptes et groupes locaux, ainsi qu'administration Active Directory à distance.
 
-**Diagnostic et observation**
+Au-delà des fonctionnalités elles-mêmes, le projet met en pratique une approche structurée de PowerShell : fonctions avancées, objets structurés, gestion des erreurs, `ShouldProcess`, `-WhatIf`, idempotence, utilisation de `SecureString` et `PSCredential`, PowerShell Remoting / WinRM et tests automatisés avec Pester.
 
-- inventaire matériel et système ;
-- export CSV ;
-- contrôle des services ;
-- diagnostic DNS, ICMP et TCP ;
-- synthèse des journaux Windows ;
-- analyse des comptes locaux et Active Directory.
+Le périmètre actuel répond à l'objectif fixé pour cette première version : disposer d'un toolkit fonctionnel, testé et documenté permettant de démontrer concrètement l'automatisation de tâches d'administration Windows et Active Directory.
 
-**Administration locale**
-
-- création, activation, désactivation et suppression de comptes locaux ;
-- changement de mot de passe ;
-- création et suppression de groupes locaux ;
-- gestion de l'appartenance aux groupes ;
-- modification contrôlée du démarrage des services.
-
-**Administration Active Directory**
-
-- audit des comptes utilisateurs ;
-- création de comptes ;
-- activation et désactivation ;
-- ajout et retrait d'utilisateurs dans les groupes ;
-- exécution distante depuis un poste d'administration distinct.
-
-Les opérations de modification privilégient `ShouldProcess`, `-WhatIf` et la vérification de l'état existant afin de conserver un comportement contrôlé et idempotent.
-
-La prochaine étape du projet est l'ajout de **tests automatisés avec Pester**, avant la revue et la finalisation du toolkit.
+Le projet pourrait être étendu avec une couverture Pester plus large, de nouvelles opérations d'administration ou une gestion plus avancée de plusieurs machines distantes. Ces évolutions restent volontairement hors du périmètre actuel : l'objectif n'est pas de multiplier les fonctionnalités, mais de conserver un projet lisible, cohérent et représentatif des compétences mises en œuvre.
