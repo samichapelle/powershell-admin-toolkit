@@ -266,27 +266,18 @@ Le laboratoire permet de développer le toolkit sur la machine hôte tout en ex�
 | Administration distante | PowerShell Remoting / WinRM |
 
 ```text
-┌──────────────────────────────────────────┐
-│ Poste hôte                              │
-│ Windows 11 Home                         │
-│ PowerShell + PowerShell Admin Toolkit   │
-└───────────────────┬──────────────────────┘
-                    │
-                    │ WinRM / PowerShell Remoting
-                    │ Host-Only : 192.168.56.0/24
-                    │
-                    ▼
-┌──────────────────────────────────────────┐
-│ Oracle VirtualBox                       │
-│                                          │
-│  DC01 - Windows Server 2022             │
-│  192.168.56.10                          │
-│  AD DS + DNS                            │
-│  Domaine : toolkit.local                │
-│  Module ActiveDirectory                 │
-│                                          │
-│  NAT ──────────────────────► Internet   │
-└──────────────────────────────────────────┘
+Poste hôte - Windows 11 Home
+        |
+        | WinRM / PowerShell Remoting
+        | Réseau Host-Only 192.168.56.0/24
+        v
+DC01 - Windows Server 2022 (VirtualBox)
+        |-- 192.168.56.10
+        |-- AD DS + DNS
+        |-- Domaine toolkit.local
+        |-- Module ActiveDirectory
+        |
+        +-- NAT --> Internet
 ```
 
 ![AD Lab Users](./docs/screenshots/ad-lab-users.png)
@@ -426,6 +417,32 @@ Pour la partie Active Directory du laboratoire, l'administration distante répon
 
 ---
 
+## Tests automatisés avec Pester
+
+Le toolkit dispose d’une suite de tests automatisés réalisée avec **Pester 6.2.0**. Elle valide des comportements représentatifs du module sans exécuter d’actions dangereuses sur le poste ou le contrôleur de domaine.
+
+La suite couvre notamment :
+
+- l’import du module ;
+- la présence des principales commandes exportées ;
+- l’exécution et la structure de sortie de `Get-SystemInventory` ;
+- la désactivation d’un compte local avec des **mocks**, sans modifier réellement le système ;
+- le comportement idempotent lorsqu’un compte est déjà désactivé ;
+- la gestion d’un compte local introuvable ;
+- le workflow Active Directory distant en simulant les appels `Invoke-Command`, sans connexion réelle au contrôleur de domaine.
+
+Exécution depuis la racine du projet :
+
+```powershell
+Invoke-Pester .\tests\PowerShellAdminToolkit.Tests.ps1 -Output Detailed
+```
+
+Résultat de la suite actuelle : **8 tests réussis, 0 échec**.
+
+![Pester Tests](./docs/screenshots/pester-tests.png)
+
+---
+
 ## Structure du projet
 
 ```text
@@ -445,6 +462,7 @@ powershell-admin-toolkit/
 │       ├── local-account-status.png
 │       ├── local-group-management.png
 │       ├── network-connectivity.png
+│       ├── pester-tests.png
 │       ├── service-health.png
 │       └── service-startup.png
 │
@@ -519,7 +537,8 @@ Selon les fonctions utilisées, il peut nécessiter :
 - `Microsoft.PowerShell.LocalAccounts` pour l'administration locale ;
 - WinRM / PowerShell Remoting pour l'administration distante ;
 - des privilèges administrateur pour les opérations modifiant le système ;
-- le module `ActiveDirectory` sur la machine qui exécute les opérations AD.
+- le module `ActiveDirectory` sur la machine qui exécute les opérations AD ;
+- **Pester 6.x** pour exécuter la suite de tests automatisés.
 
 Le laboratoire de démonstration utilise **Windows 11 Home comme poste hôte**, **Oracle VirtualBox** comme hyperviseur et **Windows Server 2022 Standard Evaluation** comme contrôleur de domaine.
 
@@ -527,7 +546,7 @@ Le laboratoire de démonstration utilise **Windows 11 Home comme poste hôte**, 
 
 ## État du projet
 
-Le toolkit couvre actuellement trois axes complémentaires.
+Le toolkit couvre actuellement quatre axes complémentaires.
 
 **Diagnostic et observation**
 
